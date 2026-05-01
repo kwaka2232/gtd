@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="GTD">
+  <title>GTD</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --surface2: #21262d;
+      --border: #30363d;
+      --text: #e6edf3;
+      --muted: #7d8590;
+      --green: #238636;
+      --green-hover: #2ea043;
+      --blue: #1f6feb;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      min-height: 100dvh;
+      padding-top: env(safe-area-inset-top);
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+
+    .container { max-width: 480px; margin: 0 auto; padding: 24px 16px; }
+
+    h1 { font-size: 26px; font-weight: 700; margin-bottom: 24px; }
+
+    .tabs {
+      display: flex; gap: 6px;
+      background: var(--surface);
+      padding: 4px; border-radius: 12px;
+      margin-bottom: 24px;
+    }
+
+    .tab {
+      flex: 1; padding: 10px 4px;
+      border: none; border-radius: 8px;
+      background: transparent; color: var(--muted);
+      font-size: 14px; font-weight: 600; cursor: pointer;
+    }
+
+    .tab.active { background: var(--surface2); color: var(--text); }
+
+    .panel { display: none; }
+    .panel.active { display: block; }
+
+    textarea, input[type="password"] {
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      color: var(--text);
+      font-size: 16px;
+      padding: 14px;
+      outline: none;
+      font-family: inherit;
+      line-height: 1.6;
+    }
+
+    textarea:focus, input[type="password"]:focus { border-color: var(--blue); }
+    textarea { resize: none; }
+
+    .btn {
+      display: block; width: 100%; margin-top: 12px;
+      padding: 16px; background: var(--green); color: #fff;
+      border: none; border-radius: 12px;
+      font-size: 17px; font-weight: 600; cursor: pointer;
+    }
+
+    .btn:active { background: var(--green-hover); }
+    .btn:disabled { opacity: 0.5; pointer-events: none; }
+
+    .result {
+      margin-top: 14px; padding: 12px 14px;
+      border-radius: 10px; font-size: 14px;
+      line-height: 1.5; display: none;
+    }
+
+    .result.ok {
+      background: rgba(35,134,54,.15);
+      border: 1px solid rgba(35,134,54,.4);
+      color: #3fb950; display: block;
+    }
+
+    .result.ng {
+      background: rgba(218,54,51,.15);
+      border: 1px solid rgba(218,54,51,.4);
+      color: #f85149; display: block;
+    }
+
+    .field { margin-bottom: 16px; }
+    .field label {
+      display: block; font-size: 12px; font-weight: 700;
+      color: var(--muted); text-transform: uppercase;
+      letter-spacing: .5px; margin-bottom: 8px;
+    }
+
+    .status {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 13px; color: var(--muted); margin-bottom: 20px;
+    }
+
+    .dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--muted); flex-shrink: 0;
+    }
+
+    .dot.ok { background: #3fb950; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>📋 GTD</h1>
+
+  <div class="tabs">
+    <button class="tab active" onclick="show('task')">タスク</button>
+    <button class="tab"        onclick="show('diary')">日記</button>
+    <button class="tab"        onclick="show('settings')">設定</button>
+  </div>
+
+  <!-- タスク -->
+  <div class="panel active" id="panel-task">
+    <textarea id="task-input" rows="4" placeholder="タスクを入力..."></textarea>
+    <button class="btn" id="task-btn" onclick="createTask()">追加する</button>
+    <div class="result" id="task-result"></div>
+  </div>
+
+  <!-- 日記 -->
+  <div class="panel" id="panel-diary">
+    <textarea id="diary-input" rows="6" placeholder="今日のメモを入力..."></textarea>
+    <button class="btn" id="diary-btn" onclick="addDiary()">追記する</button>
+    <div class="result" id="diary-result"></div>
+  </div>
+
+  <!-- 設定 -->
+  <div class="panel" id="panel-settings">
+    <div class="status">
+      <div class="dot" id="dot"></div>
+      <span id="status-text">トークン未設定</span>
+    </div>
+    <div class="field">
+      <label>GitHub Token</label>
+      <input type="password" id="token-input" placeholder="github_pat_...">
+    </div>
+    <button class="btn" onclick="saveToken()">保存する</button>
+    <div class="result" id="settings-result"></div>
+  </div>
+</div>
+
+<script>
+  const REPO = 'kwaka2232/gtd';
+  const BASE = 'https://api.github.com';
+
+  window.addEventListener('DOMContentLoaded', () => {
+    if (localStorage.getItem('gh_token')) {
+      document.getElementById('dot').className = 'dot ok';
+      document.getElementById('status-text').textContent = 'トークン設定済み';
+    }
+  });
+
+  function show(tab) {
+    ['task','diary','settings'].forEach((t, i) => {
+      document.querySelectorAll('.tab')[i].classList.toggle('active', t === tab);
+      document.getElementById('panel-' + t).classList.toggle('active', t === tab);
+    });
+  }
+
+  function setResult(id, msg, ok) {
+    const el = document.getElementById(id);
+    el.textContent = msg;
+    el.className = 'result ' + (ok ? 'ok' : 'ng');
+  }
+
+  function getToken() {
+    const t = localStorage.getItem('gh_token');
+    if (!t) throw new Error('設定タブでトークンを入力してください');
+    return t;
+  }
+
+  async function callAPI(path, body) {
+    const res = await fetch(BASE + path, {
+      method: body ? 'POST' : 'GET',
+      headers: {
+        'Authorization': 'Bearer ' + getToken(),
+        'Accept': 'application/vnd.github.v3+json',
+        'Content-Type': 'application/json',
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error('APIエラー ' + res.status + ': ' + (json.message || ''));
+    return json;
+  }
+
+  async function createTask() {
+    const title = document.getElementById('task-input').value.trim();
+    if (!title) return;
+    const btn = document.getElementById('task-btn');
+    btn.disabled = true; btn.textContent = '送信中...';
+    try {
+      const issue = await callAPI('/repos/' + REPO + '/issues', {
+        title,
+        labels: ['task'],
+      });
+      document.getElementById('task-input').value = '';
+      setResult('task-result', '✅ Issue #' + issue.number + ' を作成しました', true);
+    } catch(e) {
+      setResult('task-result', '❌ ' + e.message, false);
+    }
+    btn.disabled = false; btn.textContent = '追加する';
+  }
+
+  async function addDiary() {
+    const body = document.getElementById('diary-input').value.trim();
+    if (!body) return;
+    const btn = document.getElementById('diary-btn');
+    btn.disabled = true; btn.textContent = '送信中...';
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const issues = await callAPI('/repos/' + REPO + '/issues?labels=diary&state=open&per_page=5');
+      let issue = issues.find(i => i.title.includes(today));
+
+      if (!issue) {
+        issue = await callAPI('/repos/' + REPO + '/issues', {
+          title: '【日報】' + today,
+          labels: ['diary'],
+          body: '## 今日のメモ',
+        });
+      }
+
+      await callAPI('/repos/' + REPO + '/issues/' + issue.number + '/comments', { body });
+      document.getElementById('diary-input').value = '';
+      setResult('diary-result', '✅ Issue #' + issue.number + ' にメモを追記しました', true);
+    } catch(e) {
+      setResult('diary-result', '❌ ' + e.message, false);
+    }
+    btn.disabled = false; btn.textContent = '追記する';
+  }
+
+  function saveToken() {
+    const t = document.getElementById('token-input').value.trim();
+    if (!t) { setResult('settings-result', '❌ トークンを入力してください', false); return; }
+    localStorage.setItem('gh_token', t);
+    document.getElementById('token-input').value = '';
+    document.getElementById('dot').className = 'dot ok';
+    document.getElementById('status-text').textContent = 'トークン設定済み';
+    setResult('settings-result', '✅ 保存しました', true);
+  }
+</script>
+</body>
+</html>
