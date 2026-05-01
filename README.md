@@ -1,4 +1,4 @@
-# Personal Management
+# Personal Management (GTD)
 
 GitHub + Claude Code による個人タスク管理・日記・ナレッジベース。
 
