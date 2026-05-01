@@ -1,0 +1,73 @@
+name: 日報をMarkdownに変換
+
+on:
+  schedule:
+    - cron: '0 15 * * *'  # 毎日0時JST (UTC 15:00)
+  workflow_dispatch:       # 手動実行も可能
+
+permissions:
+  contents: write
+  issues: read
+
+jobs:
+  convert-diary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 今日の日報IssueのコメントをMarkdownに変換
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          # 日本時間で昨日の日付を取得（0時に実行するため）
+          TARGET_DATE=$(TZ='Asia/Tokyo' date -d 'yesterday' '+%Y-%m-%d')
+          YEAR=$(echo $TARGET_DATE | cut -d'-' -f1)
+          MONTH=$(echo $TARGET_DATE | cut -d'-' -f2)
+          OUTPUT_FILE="blog/${YEAR}/${MONTH}/${TARGET_DATE}.md"
+
+          # diary ラベルがついた昨日のIssueを検索
+          ISSUE=$(gh issue list \
+            --repo "$REPO" \
+            --label "diary" \
+            --state all \
+            --json number,title,body,createdAt,comments \
+            --jq ".[] | select(.createdAt | startswith(\"${TARGET_DATE}\"))" \
+            | head -1)
+
+          if [ -z "$ISSUE" ]; then
+            echo "昨日の日報Issueが見つかりませんでした: $TARGET_DATE"
+            exit 0
+          fi
+
+          ISSUE_NUMBER=$(echo "$ISSUE" | jq -r '.number')
+          ISSUE_TITLE=$(echo "$ISSUE" | jq -r '.title')
+          ISSUE_BODY=$(echo "$ISSUE" | jq -r '.body')
+
+          # コメントを取得
+          COMMENTS=$(gh issue view "$ISSUE_NUMBER" \
+            --repo "$REPO" \
+            --json comments \
+            --jq '.comments[] | "**" + (.createdAt | strptime("%Y-%m-%dT%H:%M:%SZ") | strftime("%H:%M")) + "** " + .body')
+
+          # Markdownファイルを生成
+          mkdir -p "blog/${YEAR}/${MONTH}"
+          cat > "$OUTPUT_FILE" << EOF
+          # ${TARGET_DATE}
+
+          ${ISSUE_BODY}
+
+          ## メモ
+
+          ${COMMENTS}
+
+          ---
+          *[Issue #${ISSUE_NUMBER}](https://github.com/${REPO}/issues/${ISSUE_NUMBER}) から自動生成*
+          EOF
+
+          # コミット
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "$OUTPUT_FILE"
+          git commit -m "blog: ${TARGET_DATE} の日報を追加" || echo "変更なし"
+          git push

@@ -1,0 +1,36 @@
+name: 週次定期タスクを自動作成
+
+on:
+  schedule:
+    - cron: '0 0 * * 1'  # 毎週月曜0時JST (UTC日曜15:00)
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  create-weekly-tasks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 週次タスクをIssueで作成
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          WEEK=$(TZ='Asia/Tokyo' date '+%Y年%m月第%W週')
+
+          # 週次レビュー
+          gh issue create \
+            --repo "$REPO" \
+            --title "【週次レビュー】${WEEK}" \
+            --label "recurring,task" \
+            --body "## 今週の振り返り
+
+          ### よかったこと
+
+          ### 改善したいこと
+
+          ### 来週の目標
+          "
+
+          echo "週次タスクを作成しました"
